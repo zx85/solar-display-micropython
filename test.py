@@ -1,12 +1,12 @@
 import os
 import json
-import hashlib
+from hashlib import sha1
 import hmac
 import base64
 import urequests as requests
 import time
 import ntptime
-from md5 import digest # modified version of digest to return raw bytes not strings
+import md5 # modified version of digest to return raw bytes not strings
 
 # Local time doings
 def stringTime(thisTime):
@@ -31,13 +31,13 @@ def getSolis(solisInfo):
     
     # Here's the bit where we get data from Solis
     Body = '{"pageSize":100,  "id": "'+solisInfo['solisId']+'", "sn": "'+solisInfo['solisSn']+'" }'
-    Content_MD5 = base64.b64encode(digest(Body.encode('utf-8'))).decode('utf-8')
+    Content_MD5 = base64.b64encode(md5.digest(Body.encode('utf-8'))).decode('utf-8')
     encryptStr = (VERB + "\n"
         + Content_MD5 + "\n"
         + Content_Type + "\n"
         + Date + "\n"
         + CanonicalizedResource)
-    h = hmac.new(solisInfo['solisSecret'].encode('utf-8'), msg=encryptStr.encode('utf-8'), digestmod=hashlib.sha1)
+    h = hmac.new(solisInfo['solisSecret'].encode('utf-8'), msg=encryptStr.encode('utf-8'), digestmod=sha1)
     Sign = base64.b64encode(h.digest())
     Authorization = "API " + solisInfo['solisKey'] + ":" + Sign.decode('utf-8')
     requestStr = (VERB + " " + CanonicalizedResource + "\n"
