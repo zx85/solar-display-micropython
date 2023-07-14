@@ -80,5 +80,5 @@ def md5(message):
 def digest(message):
     digest = md5(message)
     raw = digest.to_bytes(16, 'little')
-    return '{:032x}'.format(int.from_bytes(raw, 'big'))
-    #return raw
+    #return '{:032x}'.format(int.from_bytes(raw, 'big'))
+    return raw
