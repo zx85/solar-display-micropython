@@ -1,11 +1,11 @@
-import os
+import sys
 import json
-import hashlib
 from hashlib import sha1
 import hmac
 import base64
 import urequests as requests
 import time
+import network
 import ntptime
 import md5
 
@@ -50,8 +50,9 @@ def getSolis(solisInfo):
 
     # Make the call
     try:
+        print("\n\nPOST to "+url+"...",end="")
         resp = requests.post(req, data=Body, headers=header,timeout=60)
-        print("response code: "+str(resp.status_code))
+        print("["+str(resp.status_code)+"]")
         solar_usage = resp.json()
     except Exception as e:
         print ("get solar_usage didn't work sorry because this: " + str(e))
@@ -62,9 +63,6 @@ def getSolis(solisInfo):
 
 def main():
 
-    ntptime.host="0.uk.pool.ntp.org"
-    ntptime.settime()
-
 # solis info - from solis.env
     solisInfo={}
     f = open('solis.env')
@@ -74,7 +72,30 @@ def main():
             thisVal=(line.strip().split("=")[1])
             solisInfo[thisAttr]=thisVal
 
-    solar_usage=getSolis(solisInfo)
+    wlan=network.WLAN(network.STA_IF)
+    wlan.active(True)
+    print("Connecting",end="")
+    wlan.connect(solisInfo['wifiSSID'],solisInfo['wifiPass'])
+    ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
+    wifiCount=0
+    while ipAddress=='0.0.0.0' and wifiCount<30:
+        print(".",end="")
+        time.sleep(1)
+        ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
+        wifiCount+=1
+    
+    if ipAddress=="0.0.0.0":
+        print("No WiFi connection - please check details in solis.env")
+        sys.exit()
+
+    print("Wifi connected - IP address is: "+ipAddress)
+
+    ntptime.host="0.uk.pool.ntp.org"
+    ntptime.settime()
+
+    while True:
+
+        solar_usage=getSolis(solisInfo)
 
 # solarIn: pac, 
 # batteryPer: batteryCapacitySoc, 
@@ -82,11 +103,23 @@ def main():
 # powerUsed: familyLoadPower, 
 # timestamp: dataTimestamp, 
 
-    print("solis timestamp is: "+solar_usage['dataTimestamp'])
-    print("solarIn is"+solar_usage['pac'])
-    print("batteryPer is"+solar_usage['batteryCapacitySoc'])
-    print("gridIn is"+solar_usage['psum'])
-    print("powerUsed is"+solar_usage['powerUsed'])
-
+        print("\n\nSolar doings is as follows:\n")
+#        print(json.dumps(solar_usage))
+        if "data" in solar_usage:
+            timestamp=solar_usage['data']['dataTimestamp']
+            solarIn=str(solar_usage['data']['pac'])
+            batteryPer=str(solar_usage['data']['batteryCapacitySoc'])
+            gridIn=str(solar_usage['data']['psum'])
+            powerUsed=str(solar_usage['data']['familyLoadPower'])
+            solarToday=str(solar_usage['data']['eToday'])
+            print("solis timestamp is: "+timestamp)
+            print("solarIn is: "+solarIn)
+            print("batteryPer is: "+batteryPer)
+            print("gridIn is: "+gridIn)
+            print("powerUsed is: "+powerUsed)
+            print("solarToday is: "+solarToday+"\n")
+        else:
+            print("No data returned")
+        time.sleep(45)
 if __name__ == "__main__":
     main()
