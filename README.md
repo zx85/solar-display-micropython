@@ -10,3 +10,6 @@ This currently doesn't work on a WeMos D1mini (and maybe other ESP8266 devices) 
 [github.com/micropython/micropython-lib/issues/400](https://github.com/micropython/micropython-lib/issues/400) 
 
 It's been tested on a WeMos Lolin ESP32 Lite
+
+## TODO
+Still need to do the display bit because I don't have a spare display...
