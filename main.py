@@ -1,12 +1,16 @@
+# on-board goodies
 import sys
+import gc
 import json
 from hashlib import sha1
-import hmac
-import base64
 import urequests as requests
 import time
 import network
 import ntptime
+# external things
+sys.path.append('/include')
+import hmac
+import base64
 import md5
 
 # Local time doings
@@ -16,7 +20,6 @@ def stringTime(thisTime):
     monthName={1:"Jan",2:"Feb",3:"Mar",4:"Apr",5:"May",6:"Jun",7:"Jul",8:"Aug",9:"Sep",10:"Oct",11:"Nov",12:"Dec"}
     stringTime=weekDay[Weekday]+", "+f'{Date:02}'+" "+monthName[Month]+" "+f'{Year:02}'+" "+f'{Hour:02}'+":"+f'{Minute:02}'+":"+f'{Second:02}'+" GMT"
     return stringTime
-
 
 def getSolis(solisInfo):
     solar_usage={}
@@ -30,7 +33,6 @@ def getSolis(solisInfo):
 
     Date=stringTime(time.gmtime())
     
-    # Here's the bit where we get data from Solis
     Body = '{"pageSize":100,  "id": "'+solisInfo['solisId']+'", "sn": "'+solisInfo['solisSn']+'" }'
     Content_MD5 = base64.b64encode(md5.digest(Body.encode('utf-8'))).decode('utf-8')
     encryptStr = (VERB + "\n"
@@ -48,8 +50,10 @@ def getSolis(solisInfo):
                 "Authorization":Authorization
                 }
 
-    # Make the call
     try:
+        print("Memory free before gc: "+str(gc.mem_free()))
+        gc.collect()
+        print("Memory free after gc: "+ str(gc.mem_free()))
         print("\n\nPOST to "+url+"...",end="")
         resp = requests.post(req, data=Body, headers=header,timeout=60)
         print("["+str(resp.status_code)+"]")
@@ -59,19 +63,16 @@ def getSolis(solisInfo):
 
     return solar_usage
 
-# Doing stuff for the local file
-
 def main():
 
-# solis info - from solis.env
     solisInfo={}
-    f = open('solis.env')
+    f = open('config/solis.env')
     for line in f:
         if "=" in line:
             thisAttr=(line.strip().split("=")[0])
             thisVal=(line.strip().split("=")[1])
             solisInfo[thisAttr]=thisVal
-
+    f.close()
     wlan=network.WLAN(network.STA_IF)
     wlan.active(True)
     print("Connecting",end="")
@@ -97,14 +98,6 @@ def main():
 
         solar_usage=getSolis(solisInfo)
 
-# solarIn: pac, 
-# batteryPer: batteryCapacitySoc, 
-# gridIn: psum, 
-# powerUsed: familyLoadPower, 
-# timestamp: dataTimestamp, 
-
-        print("\n\nSolar doings is as follows:\n")
-#        print(json.dumps(solar_usage))
         if "data" in solar_usage:
             timestamp=solar_usage['data']['dataTimestamp']
             solarIn=str(solar_usage['data']['pac'])
@@ -121,5 +114,7 @@ def main():
         else:
             print("No data returned")
         time.sleep(45)
+
+        
 if __name__ == "__main__":
     main()

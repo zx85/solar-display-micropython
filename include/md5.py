@@ -22,7 +22,6 @@ rotate_amounts = [7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22,
                   4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23, 4, 11, 16, 23,
                   6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21, 6, 10, 15, 21]
 
-#constants = [int(abs(math.sin(i+1)) * 2**32) & 0xFFFFFFFF for i in range(64)] # precision is not enough
 constants = [3614090360, 3905402710, 606105819, 3250441966, 4118548399, 1200080426, 2821735955, 4249261313,
              1770035416, 2336552879, 4294925233, 2304563134, 1804603682, 4254626195, 2792965006, 1236535329,
              4129170786, 3225465664, 643717713, 3921069994, 3593408605, 38016083, 3634488961, 3889429448,
@@ -49,28 +48,25 @@ def left_rotate(x, amount):
     return ((x<<amount) | (x>>(32-amount))) & 0xFFFFFFFF
 
 def md5(message):
-    message = bytearray(message) #copy our input into a mutable buffer
+    message = bytearray(message) 
     orig_len_in_bits = (8 * len(message)) & 0xffffffffffffffff
     message.append(0x80)
     while len(message)%64 != 56:
         message.append(0)
     message += orig_len_in_bits.to_bytes(8, 'little')
-    #print (message)
 
     hash_pieces = init_values[:]
 
     for chunk_ofst in range(0, len(message), 64):
         a, b, c, d = hash_pieces
         chunk = message[chunk_ofst:chunk_ofst+64]
-        #print(a, b, c, d)
+
         for i in range(64):
             f = functions[i](b, c, d)
             g = index_functions[i](i)
-            #print(constants[i])
             to_rotate = a + f + constants[i] + int.from_bytes(chunk[4*g:4*g+4], 'little')
             new_b = (b + left_rotate(to_rotate, rotate_amounts[i])) & 0xFFFFFFFF
             a, b, c, d = d, new_b, b, c
-            #print(to_rotate)
 
         for i, val in enumerate([a, b, c, d]):
             hash_pieces[i] += val
@@ -80,5 +76,4 @@ def md5(message):
 def digest(message):
     digest = md5(message)
     raw = digest.to_bytes(16, 'little')
-    #return '{:032x}'.format(int.from_bytes(raw, 'big'))
     return raw
