@@ -23,11 +23,47 @@ def stringTime(thisTime):
     stringTime=weekDay[Weekday]+", "+f'{Date:02}'+" "+monthName[Month]+" "+f'{Year:02}'+" "+f'{Hour:02}'+":"+f'{Minute:02}'+":"+f'{Second:02}'+" GMT"
     return stringTime
 
-def getSolis(solisInfo):
+# read the configuration file
+def get_env(filename):
+    env={}
+    f = open(filename)
+    for line in f:
+        if "=" in line:
+            thisAttr=(line.strip().split("=")[0])
+            thisVal=(line.strip().split("=")[1])
+            env[thisAttr]=thisVal
+    f.close()
+    return env
+
+# connect to wifi bit. 
+def connect_to_wifi(env):
+    wlan=network.WLAN(network.STA_IF)
+    wlan.active(True)
+    print("Connecting",end="")
+    wlan.connect(env['wifiSSID'],env['wifiPass'])
+    ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
+    wifiCount=0
+    while ipAddress=='0.0.0.0' and wifiCount<30:
+        print(".",end="")
+        sleep(1)
+        ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
+        wifiCount+=1
+    
+    if ipAddress=="0.0.0.0":
+        print("No WiFi connection - please check details in solis.env")
+        sys.exit()
+
+    print("Wifi connected - IP address is: "+ipAddress)
+
+def set_time():
+    ntptime.host="0.uk.pool.ntp.org"
+    ntptime.settime()
+
+def getSolis(env):
     solar_usage={}
 
-    url = solisInfo['solisUrl']
-    CanonicalizedResource = solisInfo['solisPath']
+    url = env['solisUrl']
+    CanonicalizedResource = env['solisPath']
 
     req = url + CanonicalizedResource
     VERB="POST"
@@ -35,16 +71,16 @@ def getSolis(solisInfo):
 
     Date=stringTime(gmtime())
     
-    Body = '{"pageSize":100,  "id": "'+solisInfo['solisId']+'", "sn": "'+solisInfo['solisSn']+'" }'
+    Body = '{"pageSize":100,  "id": "'+env['solisId']+'", "sn": "'+env['solisSn']+'" }'
     Content_MD5 = base64.b64encode(md5.digest(Body.encode('utf-8'))).decode('utf-8')
     encryptStr = (VERB + "\n"
         + Content_MD5 + "\n"
         + Content_Type + "\n"
         + Date + "\n"
         + CanonicalizedResource)
-    h = hmac.new(solisInfo['solisSecret'].encode('utf-8'), msg=encryptStr.encode('utf-8'), digestmod=sha1)
+    h = hmac.new(env['solisSecret'].encode('utf-8'), msg=encryptStr.encode('utf-8'), digestmod=sha1)
     Sign = base64.b64encode(h.digest())
-    Authorization = "API " + solisInfo['solisKey'] + ":" + Sign.decode('utf-8')
+    Authorization = "API " + env['solisKey'] + ":" + Sign.decode('utf-8')
     
     header = { "Content-MD5":Content_MD5,
                 "Content-Type":Content_Type,
@@ -67,38 +103,16 @@ def getSolis(solisInfo):
 
 def main():
 
-    solisInfo={}
-    f = open('config/solis.env')
-    for line in f:
-        if "=" in line:
-            thisAttr=(line.strip().split("=")[0])
-            thisVal=(line.strip().split("=")[1])
-            solisInfo[thisAttr]=thisVal
-    f.close()
-    wlan=network.WLAN(network.STA_IF)
-    wlan.active(True)
-    print("Connecting",end="")
-    wlan.connect(solisInfo['wifiSSID'],solisInfo['wifiPass'])
-    ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
-    wifiCount=0
-    while ipAddress=='0.0.0.0' and wifiCount<30:
-        print(".",end="")
-        sleep(1)
-        ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
-        wifiCount+=1
+    env=get_env("config/solis.env")
     
-    if ipAddress=="0.0.0.0":
-        print("No WiFi connection - please check details in solis.env")
-        sys.exit()
+    connect_to_wifi(env)
+    
+    set_time()
 
-    print("Wifi connected - IP address is: "+ipAddress)
-
-    ntptime.host="0.uk.pool.ntp.org"
-    ntptime.settime()
 
     while True:
 
-        solar_usage=getSolis(solisInfo)
+        solar_usage=getSolis(env)
 
         if "data" in solar_usage:
             timestamp=solar_usage['data']['dataTimestamp']

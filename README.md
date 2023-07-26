@@ -5,6 +5,7 @@ It uses the [Solis API](https://solis-service.solisinverters.com/en/support/solu
 
 The intention is that it will show the main details on a 1602 display - currently it's configured for a 4 pin GPIO connection.
 
+Optional extra branch bit has support for ssd1306 for reasons.
 
 ## Note:
 This currently doesn't work on a WeMos D1mini (and maybe other ESP8266 devices) because of this:
