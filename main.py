@@ -68,8 +68,6 @@ def set_oled():
     return oled
 
 def getSolis(env):
-    solar_usage={}
-
     url = env['solisUrl']
     CanonicalizedResource = env['solisPath']
     req = url + CanonicalizedResource
@@ -96,31 +94,36 @@ def getSolis(env):
                 }
 
     try:
-        print("Memory free before gc: "+str(gc.mem_free()))
         gc.collect()
-        print("Memory free after gc: "+ str(gc.mem_free()))
-        print("\n\nPOST to "+url+"...",end="")
         resp = requests.post(req, data=Body, headers=header,timeout=60)
+        gc.collect()
         print("["+str(resp.status_code)+"]")
-        solar_usage = resp.json()
+        resp_json={}
+        if resp.status_code==200:
+            resp_json = resp.json()
     except Exception as e:
         print ("get solar_usage didn't work sorry because this: " + str(e))
 
 # Try to make some sense of the results
-    if "data" in solar_usage:
-        solar_usage['timestamp']=solar_usage['data']['dataTimestamp']
-        solar_usage['solarIn']=str(solar_usage['data']['pac'])
-        solar_usage['batteryPer']=str(solar_usage['data']['batteryCapacitySoc'])
-        solar_usage['gridIn']=str(solar_usage['data']['psum'])
-        solar_usage['powerUsed']=str(solar_usage['data']['familyLoadPower'])
-        solar_usage['solarToday']=str(solar_usage['data']['eToday'])
+    solar_usage={}
+    if "data" in resp_json:
+        solar_usage['timestamp']=resp_json['data']['dataTimestamp']
+        solar_usage['solarIn']=str(resp_json['data']['pac'])
+        solar_usage['batteryPer']=str(resp_json['data']['batteryCapacitySoc'])
+        solar_usage['gridIn']=str(resp_json['data']['psum'])
+        solar_usage['powerUsed']=str(resp_json['data']['familyLoadPower'])
+        solar_usage['solarToday']=str(resp_json['data']['eToday'])
     return solar_usage
 
 def show_oled(oled,solar_usage):
     oled.fill(0)
-    oled.text('Hello, World 1!', 0, 0)
-    oled.text('Hello, World 2!', 0, 10)
-    oled.text('Hello, World 3!', 0, 20)    
+    oled.text('sol  '+solar_usage['solarIn']+'kW', 0, 5)
+    oled.text('bat  '+solar_usage['batteryPer']+'%', 0, 18)
+    oled.text('grid '+solar_usage['gridIn']+'kW', 0, 30)
+    oled.text('use  '+solar_usage['powerUsed']+'kW', 0, 42)
+    oled.show()
+    sleep(1.5)
+    oled.text('solDay '+solar_usage['solarToday']+'kW', 0, 54)
     oled.show()
 
 def main():
@@ -129,19 +132,13 @@ def main():
     connect_to_wifi(env)
     set_time()
 
-#    oled=set_oled()
+    oled=set_oled()
 
     while True:
 
         solar_usage=getSolis(env)
         if 'timestamp' in solar_usage:
-            print("solis timestamp is: "+solar_usage['timestamp'])
-            print("solarIn is: "+solar_usage['solarIn'])
-            print("batteryPer is: "+solar_usage['batteryPer'])
-            print("gridIn is: "+solar_usage['gridIn'])
-            print("powerUsed is: "+solar_usage['powerUsed'])
-            print("solarToday is: "+solar_usage['solarToday']+"\n")
-#            show_oled(oled,solar_usage)
+            show_oled(oled,solar_usage)
         else:
             print("No data returned")
         sleep(45)
