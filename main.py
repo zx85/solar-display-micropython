@@ -59,12 +59,19 @@ def set_time():
     ntptime.host="0.uk.pool.ntp.org"
     ntptime.settime()
 
+def set_oled():
+    # ESP32 Pin assignment 
+    i2c = SoftI2C(scl=Pin(15), sda=Pin(14))
+    oled_width = 128
+    oled_height = 64
+    oled = ssd1306.SSD1306_I2C(oled_width, oled_height, i2c)
+    return oled
+
 def getSolis(env):
     solar_usage={}
 
     url = env['solisUrl']
     CanonicalizedResource = env['solisPath']
-
     req = url + CanonicalizedResource
     VERB="POST"
     Content_Type = "application/json"
@@ -99,34 +106,42 @@ def getSolis(env):
     except Exception as e:
         print ("get solar_usage didn't work sorry because this: " + str(e))
 
+# Try to make some sense of the results
+    if "data" in solar_usage:
+        solar_usage['timestamp']=solar_usage['data']['dataTimestamp']
+        solar_usage['solarIn']=str(solar_usage['data']['pac'])
+        solar_usage['batteryPer']=str(solar_usage['data']['batteryCapacitySoc'])
+        solar_usage['gridIn']=str(solar_usage['data']['psum'])
+        solar_usage['powerUsed']=str(solar_usage['data']['familyLoadPower'])
+        solar_usage['solarToday']=str(solar_usage['data']['eToday'])
     return solar_usage
+
+def show_oled(oled,solar_usage):
+    oled.fill(0)
+    oled.text('Hello, World 1!', 0, 0)
+    oled.text('Hello, World 2!', 0, 10)
+    oled.text('Hello, World 3!', 0, 20)    
+    oled.show()
 
 def main():
 
-    env=get_env("config/solis.env")
-    
+    env=get_env("config/solis.env")    
     connect_to_wifi(env)
-    
     set_time()
 
+#    oled=set_oled()
 
     while True:
 
         solar_usage=getSolis(env)
-
-        if "data" in solar_usage:
-            timestamp=solar_usage['data']['dataTimestamp']
-            solarIn=str(solar_usage['data']['pac'])
-            batteryPer=str(solar_usage['data']['batteryCapacitySoc'])
-            gridIn=str(solar_usage['data']['psum'])
-            powerUsed=str(solar_usage['data']['familyLoadPower'])
-            solarToday=str(solar_usage['data']['eToday'])
-            print("solis timestamp is: "+timestamp)
-            print("solarIn is: "+solarIn)
-            print("batteryPer is: "+batteryPer)
-            print("gridIn is: "+gridIn)
-            print("powerUsed is: "+powerUsed)
-            print("solarToday is: "+solarToday+"\n")
+        if 'timestamp' in solar_usage:
+            print("solis timestamp is: "+solar_usage['timestamp'])
+            print("solarIn is: "+solar_usage['solarIn'])
+            print("batteryPer is: "+solar_usage['batteryPer'])
+            print("gridIn is: "+solar_usage['gridIn'])
+            print("powerUsed is: "+solar_usage['powerUsed'])
+            print("solarToday is: "+solar_usage['solarToday']+"\n")
+#            show_oled(oled,solar_usage)
         else:
             print("No data returned")
         sleep(45)
