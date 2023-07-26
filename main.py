@@ -4,14 +4,16 @@ import gc
 import json
 from hashlib import sha1
 import urequests as requests
-import time
+from time import sleep, gmtime
 import network
 import ntptime
+from machine import Pin, SoftI2C
 # external things
 sys.path.append('/include')
 import hmac
 import base64
 import md5
+import ssd1306
 
 # Local time doings
 def stringTime(thisTime):
@@ -31,7 +33,7 @@ def getSolis(solisInfo):
     VERB="POST"
     Content_Type = "application/json"
 
-    Date=stringTime(time.gmtime())
+    Date=stringTime(gmtime())
     
     Body = '{"pageSize":100,  "id": "'+solisInfo['solisId']+'", "sn": "'+solisInfo['solisSn']+'" }'
     Content_MD5 = base64.b64encode(md5.digest(Body.encode('utf-8'))).decode('utf-8')
@@ -81,7 +83,7 @@ def main():
     wifiCount=0
     while ipAddress=='0.0.0.0' and wifiCount<30:
         print(".",end="")
-        time.sleep(1)
+        sleep(1)
         ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
         wifiCount+=1
     
@@ -113,7 +115,7 @@ def main():
             print("solarToday is: "+solarToday+"\n")
         else:
             print("No data returned")
-        time.sleep(45)
+        sleep(45)
 
         
 if __name__ == "__main__":
