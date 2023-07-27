@@ -36,10 +36,13 @@ def get_env(filename):
     return env
 
 # connect to wifi bit. 
-def connect_to_wifi(env):
+def connect_to_wifi(oled,env):
     wlan=network.WLAN(network.STA_IF)
     wlan.active(True)
     print("Connecting",end="")
+    oled_text(oled,'Connecting',30,18,True)
+    oled_text(oled,'to WiFi',40,38)
+ 
     wlan.connect(env['wifiSSID'],env['wifiPass'])
     ipAddress,netMask,defaultGateway,DNS=wlan.ifconfig()
     wifiCount=0
@@ -51,13 +54,40 @@ def connect_to_wifi(env):
     
     if ipAddress=="0.0.0.0":
         print("No WiFi connection - please check details in solis.env")
+        oled_text(oled,'Wifi failed',0,7,True)
+        oled_text(oled,'Please reset',0,30)
+        oled_text(oled,'or check config',0,50)
         sys.exit()
 
     print("Wifi connected - IP address is: "+ipAddress)
+    oled_text(oled,'Connected OK',0,7,True)
+    oled_text(oled,'IP address: ',0,30)
+    oled_text(oled,ipAddress,0,50)
+    sleep(3)
 
-def set_time():
-    ntptime.host="0.uk.pool.ntp.org"
-    ntptime.settime()
+def set_time(oled):
+    count=3
+    oled_text(oled,"NTP sync",20,28,True)
+
+    while count>0 and count<99:
+        try:
+            ntptime.host="uk.pool.ntp.org"
+            ntptime.settime()
+            count=99
+        except Exception as e:
+            print ("ntptime didn't work: " + str(e))
+            count-=1
+            if count>=1:
+                print ("retrying")
+            sleep(5)
+    if count==99:
+        sleep(2)
+        oled_text(oled,"Time sync OK",10,28,True)
+        sleep(2)
+    else:
+        oled_text(oled,"Time sync fail",0,7,True)
+        oled_text(oled,"Please reset",0,40)
+        sys.exit()
 
 def set_oled():
     # ESP32 Pin assignment 
@@ -66,6 +96,12 @@ def set_oled():
     oled_height = 64
     oled = ssd1306.SSD1306_I2C(oled_width, oled_height, i2c)
     return oled
+
+def oled_text(oled,text,x,y,cls=False):
+    if cls:
+        oled.fill(0)
+    oled.text(text,x,y)
+    oled.show()
 
 def getSolis(env):
     url = env['solisUrl']
@@ -92,13 +128,14 @@ def getSolis(env):
                 "Date":Date,
                 "Authorization":Authorization
                 }
-
+ 
+    resp_json={}
     try:
         gc.collect()
         resp = requests.post(req, data=Body, headers=header,timeout=60)
         gc.collect()
         print("["+str(resp.status_code)+"]")
-        resp_json={}
+
         if resp.status_code==200:
             resp_json = resp.json()
     except Exception as e:
@@ -107,42 +144,72 @@ def getSolis(env):
 # Try to make some sense of the results
     solar_usage={}
     if "data" in resp_json:
+# Timestamp is text
         solar_usage['timestamp']=resp_json['data']['dataTimestamp']
-        solar_usage['solarIn']=str(resp_json['data']['pac'])
-        solar_usage['batteryPer']=str(resp_json['data']['batteryCapacitySoc'])
-        solar_usage['gridIn']=str(resp_json['data']['psum'])
-        solar_usage['powerUsed']=str(resp_json['data']['familyLoadPower'])
-        solar_usage['solarToday']=str(resp_json['data']['eToday'])
+# Battery is float
+        solar_usage['batteryPer']=resp_json['data']['batteryCapacitySoc']
+# Everything else has units
+        if resp_json['data']['pac'] < 1:
+            solar_usage['solarIn']=str(int(resp_json['data']['pac']*1000))+"W"
+        else:
+            solar_usage['solarIn']=str(resp_json['data']['pac'])[:4]+"kW"
+        if abs(resp_json['data']['psum']) < 1:
+             solar_usage['gridIn']=str(int(resp_json['data']['psum']*1000))+"W"
+        else:
+            solar_usage['gridIn']=str(resp_json['data']['psum'])[:4]+"kW"
+        if resp_json['data']['familyLoadPower'] < 1:
+            solar_usage['powerUsed']=str(int(resp_json['data']['familyLoadPower']*1000))+"W"
+        else:
+            solar_usage['powerUsed']=str(resp_json['data']['familyLoadPower'])[:4]+"kW"
+        if resp_json['data']['eToday'] < 1:
+            solar_usage['solarToday']=str(int(resp_json['data']['eToday']*1000))+"W"
+        else:
+            solar_usage['solarToday']=str(resp_json['data']['eToday'])[:4]+"kW"
     return solar_usage
 
-def show_oled(oled,solar_usage):
-    oled.fill(0)
-    oled.text('sol  '+solar_usage['solarIn']+'kW', 0, 5)
-    oled.text('bat  '+solar_usage['batteryPer']+'%', 0, 18)
-    oled.text('grid '+solar_usage['gridIn']+'kW', 0, 30)
-    oled.text('use  '+solar_usage['powerUsed']+'kW', 0, 42)
-    oled.show()
-    sleep(1.5)
-    oled.text('solDay '+solar_usage['solarToday']+'kW', 0, 54)
-    oled.show()
+def show_oled(oled,solar_usage,last):
+    last_timestamp=last.split("|")[0]
+    last_bat=float(last.split("|")[1])
+    if last_timestamp!=solar_usage['timestamp']:
+        oled_text(oled,'sol  '+solar_usage['solarIn'], 0, 5, True)
+        oled_text(oled,'bat  '+str(solar_usage['batteryPer'])+'%', 0, 18)
+
+        if last_bat<solar_usage['batteryPer']:
+            oled_text(oled,'^',100,18)
+        if last_bat==solar_usage['batteryPer']:
+            oled_text(oled,'=',100,18)
+        if last_bat>solar_usage['batteryPer']:
+            oled_text(oled,'v',100,18)
+
+        oled_text(oled,'grid '+solar_usage['gridIn'], 0, 30)
+        oled_text(oled,'use  '+solar_usage['powerUsed'], 0, 42)
+        sleep(1)
+        oled_text(oled,'solDay '+solar_usage['solarToday'], 0, 54)
+        last=solar_usage['timestamp']+"|"+str(solar_usage['batteryPer'])
+    return last
 
 def main():
 
-    env=get_env("config/solis.env")    
-    connect_to_wifi(env)
-    set_time()
-
     oled=set_oled()
 
+    env=get_env("config/solis.env")    
+    connect_to_wifi(oled,env)
+    set_time(oled)
+
+
+    last="0|0"
     while True:
 
+        oled.pixel(127,0,1)
+        oled.show()
         solar_usage=getSolis(env)
         if 'timestamp' in solar_usage:
-            show_oled(oled,solar_usage)
+            last=show_oled(oled,solar_usage,last)
         else:
             print("No data returned")
-        sleep(45)
-
+        oled.pixel(127,0,0)
+        oled.show()
+        sleep(45)   
         
 if __name__ == "__main__":
     main()
