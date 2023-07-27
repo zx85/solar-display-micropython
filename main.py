@@ -135,7 +135,6 @@ def getSolis(env):
         resp = requests.post(req, data=Body, headers=header,timeout=60)
         gc.collect()
         print("["+str(resp.status_code)+"]")
-
         if resp.status_code==200:
             resp_json = resp.json()
     except Exception as e:
@@ -208,7 +207,7 @@ def main():
         else:
             print("No data returned")
             count=4
-            while count>0:
+            while count>-1:
                 oled.pixel(127,0,count%2)
                 oled.show()
                 sleep(0.5)
