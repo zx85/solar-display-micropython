@@ -172,14 +172,14 @@ def show_oled(oled,solar_usage,last):
     last_bat=float(last.split("|")[1])
     if last_timestamp!=solar_usage['timestamp']:
         oled_text(oled,'sol  '+solar_usage['solarIn'], 0, 5, True)
-        oled_text(oled,'bat  '+str(solar_usage['batteryPer'])+'%', 0, 18)
+        oled_text(oled,'bat  '+str(int(solar_usage['batteryPer']))+'%', 0, 18)
 
         if last_bat<solar_usage['batteryPer']:
-            oled_text(oled,'^',100,18)
+            oled_text(oled,'^',80,18)
         if last_bat==solar_usage['batteryPer']:
-            oled_text(oled,'=',100,18)
+            oled_text(oled,'=',80,18)
         if last_bat>solar_usage['batteryPer']:
-            oled_text(oled,'v',100,18)
+            oled_text(oled,'v',80,18)
 
         oled_text(oled,'grid '+solar_usage['gridIn'], 0, 30)
         oled_text(oled,'use  '+solar_usage['powerUsed'], 0, 42)
@@ -207,6 +207,14 @@ def main():
             last=show_oled(oled,solar_usage,last)
         else:
             print("No data returned")
+            count=4
+            while count>0:
+                oled.pixel(127,0,count%2)
+                oled.show()
+                sleep(0.5)
+                count-=1
+                oled.pixel(127,63,1)
+
         oled.pixel(127,0,0)
         oled.show()
         sleep(45)   
