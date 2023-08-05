@@ -104,6 +104,7 @@ def oled_text(oled,text,x,y,cls=False):
     oled.show()
 
 def getSolis(env):
+
     url = env['solisUrl']
     CanonicalizedResource = env['solisPath']
     req = url + CanonicalizedResource
@@ -187,6 +188,13 @@ def show_oled(oled,solar_usage,last):
         last=solar_usage['timestamp']+"|"+str(solar_usage['batteryPer'])
     return last
 
+def set_pixel(oled,pixel,status=1):
+    if pixel=="updating":
+        oled.pixel(127,0,status)
+    if pixel=="recovering":
+        oled.pixel(127,63,status)
+    oled.show()
+
 def main():
 
     oled=set_oled()
@@ -198,24 +206,25 @@ def main():
 
     last="0|0"
     while True:
-
-        oled.pixel(127,0,1)
-        oled.show()
+        set_pixel(oled,"updating")
         solar_usage=getSolis(env)
         if 'timestamp' in solar_usage:
+# Clear the 'awaiting recovery' pixel
+            set_pixel(oled,"recovering",0)
+# And show the new value if there is one            
             last=show_oled(oled,solar_usage,last)
         else:
             print("No data returned")
             count=4
             while count>-1:
-                oled.pixel(127,0,count%2)
-                oled.show()
+                set_pixel(oled,"updating",count%2)
                 sleep(0.5)
                 count-=1
-                oled.pixel(127,63,1)
+# Show the 'awaiting recovery' pixel
+            set_pixel(oled,"recovery")
 
-        oled.pixel(127,0,0)
-        oled.show()
+# Then clear the 'updating' pixel
+        set_pixel(oled,"updating",0)
         sleep(45)   
         
 if __name__ == "__main__":
