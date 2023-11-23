@@ -8,8 +8,10 @@ from time import sleep, gmtime
 import network
 import ntptime
 from machine import Pin, SoftI2C
-# external things
 sys.path.append('/include')
+# external things
+from machine_i2c_lcd import I2cLcd
+from machine import Pin, I2Cimor
 import hmac
 import base64
 import md5
@@ -67,6 +69,18 @@ def getSolis(solisInfo):
 
 def main():
 
+    # define the display
+    sdaPIN=Pin(23)
+    sclPIN=Pin(19)
+    i2c=I2C(0,sda=sdaPIN, scl=sclPIN, freq=400000)
+    devices = i2c.scan()
+    for device in devices:
+        print(hex(device))
+    I2C_ADDR     = 0x27
+    I2C_NUM_ROWS = 2
+    I2C_NUM_COLS = 16
+    lcd = I2cLcd(i2c, I2C_ADDR, I2C_NUM_ROWS, I2C_NUM_COLS)
+
     solisInfo={}
     f = open('config/solis.env')
     for line in f:
@@ -113,6 +127,10 @@ def main():
             print("gridIn is: "+gridIn)
             print("powerUsed is: "+powerUsed)
             print("solarToday is: "+solarToday+"\n")
+            lcd.clear()
+            lcd.hide_cursor()
+            lcd.move_to(0,0)
+            lcd.putstr(solarIn)
         else:
             print("No data returned")
         sleep(45)
