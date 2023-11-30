@@ -1,11 +1,10 @@
 # on-board goodies
 import sys
 import gc
-import json
 import uasyncio
 from hashlib import sha1
 import urequests as requests
-from time import sleep, gmtime
+from time import sleep, gmtime, localtime
 import network
 import ntptime
 from machine import Pin, I2C
@@ -46,7 +45,7 @@ def stringTime(thisTime):
 
 
 def getSolis(solisInfo):
-    solar = {}
+    solar_dict = {}
     url = solisInfo["solisUrl"]
     CanonicalizedResource = solisInfo["solisPath"]
 
@@ -89,95 +88,115 @@ def getSolis(solisInfo):
         "Date": Date,
         "Authorization": Authorization,
     }
-
+    solar_text = ""
     try:
         gc.collect()
         gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
         print("\n\nPOST to " + url + "...", end="")
         resp = requests.post(req, data=Body, headers=header, timeout=60)
         print("[" + str(resp.status_code) + "]")
-        solar = resp.text
+        solar_text = resp.text
     except Exception as e:
         print("get solar_usage didn't work sorry because this: " + str(e))
 
-    return solar
+    solar_dict = {}
+    if solar_text != "":
+        for each_field in solar_text.split(","):
+            if '"dataTimestamp":' in each_field:
+                solar_dict["timestamp"] = each_field.split(":")[1]
+            if '"pac":' in each_field:
+                solar_dict["solar_in"] = each_field.split(":")[1]
+            if '"batteryCapacitySoc":' in each_field:
+                solar_dict["battery_per"] = each_field.split(":")[1]
+            if '"psum":' in each_field:
+                solar_dict["grid_in"] = each_field.split(":")[1]
+            if '"familyLoadPower":' in each_field:
+                solar_dict["power_used"] = each_field.split(":")[1]
+            if '"eToday":' in each_field:
+                solar_dict["solar_today"] = each_field.split(":")[1]
+    return solar_dict
+
+
+def lcd_line(lcd, lcd_string, row=0, col=0):
+    if row == 0:  # presume we want to clear the screen if line is 1
+        lcd.clear()
+    lcd.move_to(col, row)
+    lcd.putstr(lcd_string)
 
 
 # Coroutine: get the solis data every 45 seconds
-async def display_data(solisInfo, lcd):
-    global solar_usage
+def display_data(solar_usage, lcd, force=False):
     # do something funny with the battery icon ha
     battery_icon = bytearray([0x0E, 0x0E, 0x11, 0x1F, 0x1F, 0x1F, 0x1F, 0x1F])
-    prev_battery_int = 0
-    prev_timestamp = 0
+    battery_int = int(float(solar_usage["battery_per"]))
+    grid_float = float(solar_usage["grid_in"])
+    # Sanity check printing business
+    print("solis timestamp is: " + solar_usage["timestamp"])
+    print("solar_in is: " + solar_usage["solar_in"])
+    print("battery_per is: " + solar_usage["battery_per"])
+    print("grid_in is: " + solar_usage["grid_in"])
+    print("power_used is: " + solar_usage["power_used"])
+    print("solar_today is: " + solar_usage["solar_today"] + "\n")
+    if force or (solar_usage["timestamp"] != solar_usage["prev_timestamp"]):
+        print("Solis data has been updated - do the LCD thing...")
+        # LCD business
+        if battery_int < 90:
+            battery_icon[1] = 0x0A
+        if battery_int < 75:
+            battery_icon[2] = 0x11
+        if battery_int < 60:
+            battery_icon[3] = 0x11
+        if battery_int < 45:
+            battery_icon[4] = 0x11
+        if battery_int < 30:
+            battery_icon[5] = 0x11
+        if battery_int < 15:
+            battery_icon[6] = 0x11
+        lcd.custom_char(5, battery_icon)
+        lcd.clear()
+        # Solar
+        lcd.putstr(chr(0) + " " + solar_usage["solar_in"][:4] + "kW      ")
+        # Battery
+        lcd.move_to(9, 0)
+        lcd.putstr(chr(5))
+        if battery_int == solar_usage["prev_battery_int"]:
+            lcd.putstr("=")
+        if battery_int < solar_usage["prev_battery_int"]:
+            lcd.putstr(chr(4))
+        if battery_int > solar_usage["prev_battery_int"]:
+            lcd.putstr(chr(3))
+        lcd.putstr(" " + str(battery_int) + "%     ")
+        # Grid
+        lcd.move_to(0, 1)
+        lcd.putstr(chr(1))
+        if grid_float == 0:
+            lcd.putstr("=0kW   ")
+        if grid_float < 0:
+            lcd.putstr(chr(4) + solar_usage["grid_in"][1:5] + "kW    ")
+        if grid_float > 0:
+            lcd.putstr(chr(3) + solar_usage["grid_in"][:4] + "kW    ")
+        # Usage
+        lcd.move_to(9, 1)
+        lcd.putstr(
+            chr(2)
+            + solar_usage["power_used"][:4]
+            + "kW"
+            + " " * (4 - len(solar_usage["power_used"][:4]))
+        )
+
+
+async def timer_solis_data(solisInfo, lcd):
+    global solar_usage
+    solar_usage["prev_battery_int"] = 0
+    solar_usage["prev_timestamp"] = "0"
     while True:
-        solar = getSolis(solisInfo)
-        print(solar[:30])
-        if "groovydata" in solar:
-            solar_usage = solar
-            timestamp = solar_usage["data"]["dataTimestamp"]
-            solar_in = str(solar_usage["data"]["pac"])
-            battery_per = str(solar_usage["data"]["batteryCapacitySoc"])
-            battery_int = int(float(battery_per))
-            grid_in = str(solar_usage["data"]["psum"])
-            grid_float = float(grid_in)
-            power_used = str(solar_usage["data"]["familyLoadPower"])
-            solar_today = str(solar_usage["data"]["eToday"])
-            # Sanity check printing business
-            print("solis timestamp is: " + timestamp)
-            print("solar_in is: " + solar_in)
-            print("battery_per is: " + battery_per)
-            print("grid_in is: " + grid_in)
-            print("power_used is: " + power_used)
-            print("solar_today is: " + solar_today + "\n")
-            if timestamp != prev_timestamp:
-                print("Solis data has been updated - do the LCD thing...")
-                # LCD business
-                if battery_int < 90:
-                    battery_icon[1] = 0x0A
-                if battery_int < 75:
-                    battery_icon[2] = 0x11
-                if battery_int < 60:
-                    battery_icon[3] = 0x11
-                if battery_int < 45:
-                    battery_icon[4] = 0x11
-                if battery_int < 30:
-                    battery_icon[5] = 0x11
-                if battery_int < 15:
-                    battery_icon[6] = 0x11
-                lcd.custom_char(5, battery_icon)
-                lcd.clear()
-                lcd.hide_cursor()
-                # Solar
-                lcd.move_to(0, 0)
-                lcd.putstr(chr(0) + " " + solar_in[:4] + "kW      ")
-                # Battery
-                lcd.move_to(9, 0)
-                lcd.putstr(chr(5))
-                if battery_int == prev_battery_int:
-                    lcd.putstr("=")
-                if battery_int < prev_battery_int:
-                    lcd.putstr(chr(4))
-                if battery_int > prev_battery_int:
-                    lcd.putstr(chr(3))
-                lcd.putstr(" " + str(battery_int) + "%     ")
-                # Grid
-                lcd.move_to(0, 1)
-                lcd.putstr(chr(1))
-                if grid_float == 0:
-                    lcd.putstr("=0kW   ")
-                if grid_float < 0:
-                    lcd.putstr(chr(4) + grid_in[1:5] + "kW    ")
-                if grid_float > 0:
-                    lcd.putstr(chr(3) + grid_in[:4] + "kW    ")
-                # Usage
-                lcd.move_to(9, 1)
-                lcd.putstr(
-                    chr(2) + power_used[:4] + "kW" + " " * (4 - len(power_used[:4]))
-                )
+        solar_dict = getSolis(solisInfo)
+        if "timestamp" in solar_dict:
+            solar_usage.update(solar_dict)
+            display_data(solar_usage, lcd)
             # ready to loop then
-            prev_battery_int = battery_int
-            prev_timestamp = timestamp
+            solar_usage["prev_battery_int"] = int(float(solar_usage["battery_per"]))
+            solar_usage["prev_timestamp"] = solar_usage["timestamp"]
         else:
             print("No data returned")
         await uasyncio.sleep(45)
@@ -193,12 +212,20 @@ async def wait_button(btn):
 
 # Corouteine: display solar today
 async def display_solar_today(lcd):
-    if "data" in solar_usage:
-        print("Solar today is " + solar_usage["data"]["eToday"])
-        print("Last updated: " + solar_usage["data"]["dataTimestamp"])
+    if "solar_today" in solar_usage:
+        print("Solar today is " + solar_usage["solar_today"])
+        print("Last updated: " + solar_usage["timestamp"])
+        lcd_line(lcd, "Today: " + solar_usage["solar_today"][:4] + "kW")
+        solis_time = stringTime(
+            localtime(int(float(solar_usage["timestamp"].replace('"', "")) / 1000))
+        )[-12:].replace("GMT", "UTC")
+        lcd_line(lcd, "at " + solis_time, 1)
     else:
         print("No Solar today data - sorry")
     await uasyncio.sleep(5)
+    # put the old data back
+    if "timestamp" in solar_usage:
+        display_data(solar_usage, lcd, True)
     print("And I'm done.")
 
 
@@ -242,10 +269,19 @@ async def main():
             solisInfo[thisAttr] = thisVal
     f.close()
 
+    # Initial display goodness
+    lcd.clear()
+    lcd.hide_cursor()
+    lcd_line(lcd, "Solis data - SN:")
+    lcd_line(lcd, solisInfo["solisSn"], 1)
+    sleep(2)
+
     # Configure the network
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     print("Connecting", end="")
+    lcd_line(lcd, "Connecting to")
+    lcd_line(lcd, "WiFi ...", 1)
     wlan.connect(solisInfo["wifiSSID"], solisInfo["wifiPass"])
     ipAddress, netMask, defaultGateway, DNS = wlan.ifconfig()
     wifiCount = 0
@@ -260,6 +296,12 @@ async def main():
         sys.exit()
 
     print("Wifi connected - IP address is: " + ipAddress)
+    lcd_line(lcd, "Connected. SSID:")
+    lcd_line(lcd, solisInfo["wifiSSID"], 1)
+    sleep(2)
+    lcd_line(lcd, "Connected. IP:")
+    lcd_line(lcd, ipAddress, 1)
+    sleep(2)
 
     ntptime.host = "0.uk.pool.ntp.org"
     ntptime.settime()
@@ -267,7 +309,7 @@ async def main():
     # Main loop
     # Get the solis data
 
-    uasyncio.create_task(display_data(solisInfo, lcd))
+    uasyncio.create_task(timer_solis_data(solisInfo, lcd))
 
     while True:
         await wait_button(btn)
