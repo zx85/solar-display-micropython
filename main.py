@@ -57,9 +57,9 @@ def getSolis(solisInfo):
 
     Body = (
         '{"pageSize":100,  "id": "'
-        + solisInfo["solisId"]
+        + solisInfo["solisId"].decode()
         + '", "sn": "'
-        + solisInfo["solisSn"]
+        + solisInfo["solisSn"].decode()
         + '" }'
     )
     Content_MD5 = base64.b64encode(md5.digest(Body.encode("utf-8"))).decode("utf-8")
@@ -75,12 +75,12 @@ def getSolis(solisInfo):
         + CanonicalizedResource
     )
     h = hmac.new(
-        solisInfo["solisSecret"].encode("utf-8"),
+        solisInfo["solisSecret"].decode().encode("utf-8"),
         msg=encryptStr.encode("utf-8"),
         digestmod=sha1,
     )
     Sign = base64.b64encode(h.digest())
-    Authorization = "API " + solisInfo["solisKey"] + ":" + Sign.decode("utf-8")
+    Authorization = "API " + solisInfo["solisKey"].decode() + ":" + Sign.decode("utf-8")
 
     header = {
         "Content-MD5": Content_MD5,
@@ -259,8 +259,25 @@ async def main():
     down_icon = bytearray([0x00, 0x00, 0x00, 0x00, 0x11, 0x1B, 0x0E, 0x04])
     lcd.custom_char(4, down_icon)
 
-    # TODO: captive portal for unconfigured info
     solisInfo = {}
+    # Now separate credentials
+    CRED_FILE = "config/credentials.env"
+    try:
+        with open(CRED_FILE, "rb") as f:
+            contents = f.read().split(b",")
+            if len(contents) == 6:
+                (
+                    solisInfo["wifiSSID"],
+                    solisInfo["wifiPass"],
+                    solisInfo["solisKey"],
+                    solisInfo["solisSecret"],
+                    solisInfo["solisId"],
+                    solisInfo["solisSn"],
+                ) = contents
+    except OSError:
+        print("No or invalid credentials file - please reset and start again")
+        sys.exit()
+
     f = open("config/solis.env")
     for line in f:
         if "=" in line:
@@ -273,7 +290,7 @@ async def main():
     lcd.clear()
     lcd.hide_cursor()
     lcd_line(lcd, "Solis data - SN:")
-    lcd_line(lcd, solisInfo["solisSn"], 1)
+    lcd_line(lcd, solisInfo["solisSn"].decode(), 1)
     sleep(2)
 
     # Configure the network
@@ -297,7 +314,7 @@ async def main():
 
     print("Wifi connected - IP address is: " + ipAddress)
     lcd_line(lcd, "Connected. SSID:")
-    lcd_line(lcd, solisInfo["wifiSSID"], 1)
+    lcd_line(lcd, solisInfo["wifiSSID"].decode(), 1)
     sleep(2)
     lcd_line(lcd, "Connected. IP:")
     lcd_line(lcd, ipAddress, 1)
