@@ -1,5 +1,6 @@
 # on-board goodies
 import sys
+import os
 import gc
 import uasyncio
 from hashlib import sha1
@@ -7,7 +8,7 @@ import urequests as requests
 from time import sleep, gmtime, localtime
 import network
 import ntptime
-from machine import Pin, I2C PWM
+from machine import Pin, I2C, PWM, reset
 
 sys.path.append("/include")
 # external things
@@ -16,9 +17,34 @@ import hmac
 import base64
 import md5
 
-# Global variable so it can be persistent
+# Global variables so it can be persistent
 solar_usage = {}
-led_bright=1023
+led_bright = 800
+CRED_FILE = "config/credentials.env"
+SOLIS_FILE = "config/solis.env"
+
+# Device descriptors
+# define the display
+# WEMOS LOLIN32 ESP32 Lite pinout
+sdaPIN = Pin(23)
+sclPIN = Pin(19)
+# S2MINI pinout (I think)
+# sdaPIN = Pin(33)
+# sclPIN = Pin(35)
+i2c = I2C(0, sda=sdaPIN, scl=sclPIN, freq=400000)
+devices = i2c.scan()
+for device in devices:
+    print("i2c address is" + hex(device))
+I2C_ADDR = 0x27
+I2C_NUM_ROWS = 2
+I2C_NUM_COLS = 16
+lcd = I2cLcd(i2c, I2C_ADDR, I2C_NUM_ROWS, I2C_NUM_COLS)
+led_out = PWM(Pin(5), freq=500, duty=800)
+# Usage: led_out.init(freq=500, duty=led_bright)
+led_btn = Pin(34, Pin.IN, Pin.PULL_UP)
+day_btn = Pin(35, Pin.IN, Pin.PULL_UP)
+reset_btn = Pin(36, Pin.IN, Pin.PULL_UP)
+
 
 # Local time doings
 def stringTime(thisTime):
@@ -89,6 +115,7 @@ def getSolis(solisInfo):
         "Authorization": Authorization,
     }
     solar_text = ""
+    solar_resp = "!!!"
     try:
         gc.collect()
         gc.threshold(gc.mem_free() // 4 + gc.mem_alloc())
@@ -96,10 +123,12 @@ def getSolis(solisInfo):
         resp = requests.post(req, data=Body, headers=header, timeout=60)
         print("[" + str(resp.status_code) + "]")
         solar_text = resp.text
+        solar_resp = resp.status_code
     except Exception as e:
         print("get solar_usage didn't work sorry because this: " + str(e))
 
-    solar_dict = {}
+    solar_dict = {"resp": solar_resp}
+
     if solar_text != "":
         for each_field in solar_text.split(","):
             if '"dataTimestamp":' in each_field:
@@ -118,7 +147,7 @@ def getSolis(solisInfo):
 
 
 def lcd_line(lcd, lcd_string, row=0, col=0):
-    if row == 0:  # presume we want to clear the screen if line is 1
+    if row == 0 and col == 0:  # presume we want to clear the screen if it's top left
         lcd.clear()
     lcd.move_to(col, row)
     lcd.putstr(lcd_string)
@@ -190,23 +219,65 @@ async def timer_solis_data(solisInfo, lcd):
     solar_usage["prev_battery_int"] = 0
     solar_usage["prev_timestamp"] = "0"
     while True:
+        lcd_line(lcd, chr(6), 1, 8)
         solar_dict = getSolis(solisInfo)
         if "timestamp" in solar_dict:
+            lcd_line(lcd, " ", 1, 8)
             solar_usage.update(solar_dict)
             display_data(solar_usage, lcd)
             # ready to loop then
             solar_usage["prev_battery_int"] = int(float(solar_usage["battery_per"]))
             solar_usage["prev_timestamp"] = solar_usage["timestamp"]
         else:
+            lcd_line(lcd, chr(7), 1, 8)
             print("No data returned")
+            if "resp" in solar_dict:
+                solar_usage["resp"] = solar_dict["resp"]
         await uasyncio.sleep(45)
 
 
-# Coroutine: button press
-async def wait_button(btn):
-    btn_prev = btn.value()
-    while (btn.value() == 1) or (btn.value() == btn_prev):
-        btn_prev = btn.value()
+async def wait_brightness():
+    global led_bright
+    while True:
+        led_out.duty(led_bright)
+        await uasyncio.sleep_ms(100)
+
+
+# Coroutine: reset button
+async def wait_reset_button():
+    global CRED_FILE
+    btn_count = 0
+    btn_max = 75
+    while True:
+        if reset_btn.value() == 1:
+            btn_count = 0
+        if reset_btn.value() == 0:
+            print(f"Pressed - count is {str(btn_count)}")
+            btn_count = btn_count + 1
+        if btn_count >= btn_max:
+            lcd_line(lcd, "Full reset")
+            sleep(2)
+            os.remove(CRED_FILE)
+            reset()
+        await uasyncio.sleep(0.04)
+
+
+# Coroutine: led button
+async def wait_led_button():
+    global led_bright
+    prev_btn = 1
+    while True:
+        if led_btn.value() == 1 and prev_btn == 0:
+            led_bright = (led_bright + 200) % 1200
+        prev_btn = led_btn.value()
+        await uasyncio.sleep(0.04)
+
+
+# Coroutine: day button press
+async def wait_day_button(day_btn):
+    btn_prev = day_btn.value()
+    while (day_btn.value() == 1) or (day_btn.value() == btn_prev):
+        btn_prev = day_btn.value()
         await uasyncio.sleep(0.04)
 
 
@@ -221,7 +292,11 @@ async def display_solar_today(lcd):
         )[-12:].replace("GMT", "UTC")
         lcd_line(lcd, "at " + solis_time, 1)
     else:
-        print("No Solar today data - sorry")
+        if "resp" in solar_usage:
+            print("No Solar today data - oops")
+            print(f"last response code: {solar_usage['resp']}")
+            lcd_line(lcd, "solis response:")
+            lcd_line(lcd, str(solar_usage["resp"]), 1)
     await uasyncio.sleep(5)
     # put the old data back
     if "timestamp" in solar_usage:
@@ -231,27 +306,8 @@ async def display_solar_today(lcd):
 
 async def main():
     global led_bright
-    # define the display
-    # WEMOS LOLIN32 ESP32 Lite pinout
-    sdaPIN = Pin(23)
-    sclPIN = Pin(19)
-    # S2MINI pinout (I think)
-    # sdaPIN = Pin(33)
-    # sclPIN = Pin(35)
-    i2c = I2C(0, sda=sdaPIN, scl=sclPIN, freq=400000)
-    devices = i2c.scan()
-    for device in devices:
-        print("i2c address is" + hex(device))
-    I2C_ADDR = 0x27
-    I2C_NUM_ROWS = 2
-    I2C_NUM_COLS = 16
-    lcd = I2cLcd(i2c, I2C_ADDR, I2C_NUM_ROWS, I2C_NUM_COLS)
-    led_out = PWM(Pin(5), freq=500, duty=600)
-    # Usage: led_out.init(freq=500, duty=led_bright)
-    led_btn = Pin(34, Pin.IN, Pin.PULL_UP)
-    day_btn = Pin(35, Pin.IN, Pin.PULL_UP)
-    reset_btn = Pin(36, Pin.IN, Pin.PULL_UP)
-    
+    led_out.init(freq=500, duty=led_bright)
+
     # Custom character bits
     solar_icon = bytearray([0x00, 0x15, 0x0E, 0x1F, 0x1F, 0x0E, 0x15, 0x00])
     lcd.custom_char(0, solar_icon)
@@ -263,10 +319,16 @@ async def main():
     lcd.custom_char(3, up_icon)
     down_icon = bytearray([0x00, 0x00, 0x00, 0x00, 0x11, 0x1B, 0x0E, 0x04])
     lcd.custom_char(4, down_icon)
+    try_dot = bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04])
+    lcd.custom_char(6, try_dot)
+    bad_dot = bytearray([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0A])
+    lcd.custom_char(7, bad_dot)
 
     solisInfo = {}
     # Now separate credentials
-    CRED_FILE = "config/credentials.env"
+    global CRED_FILE
+    global SOLIS_FILE
+
     try:
         with open(CRED_FILE, "rb") as f:
             contents = f.read().split(b",")
@@ -324,6 +386,7 @@ async def main():
     lcd_line(lcd, "Connected. IP:")
     lcd_line(lcd, ipAddress, 1)
     sleep(2)
+    lcd_line(lcd, "Getting data ...")
 
     ntptime.host = "0.uk.pool.ntp.org"
     ntptime.settime()
@@ -332,9 +395,12 @@ async def main():
     # Get the solis data
 
     uasyncio.create_task(timer_solis_data(solisInfo, lcd))
+    uasyncio.create_task(wait_brightness())
+    uasyncio.create_task(wait_led_button())
+    uasyncio.create_task(wait_reset_button())
 
     while True:
-        await wait_button(day_btn)
+        await wait_day_button(day_btn)
         await display_solar_today(lcd)
 
 
