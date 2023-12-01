@@ -7,7 +7,7 @@ import urequests as requests
 from time import sleep, gmtime, localtime
 import network
 import ntptime
-from machine import Pin, I2C
+from machine import Pin, I2C PWM
 
 sys.path.append("/include")
 # external things
@@ -18,7 +18,7 @@ import md5
 
 # Global variable so it can be persistent
 solar_usage = {}
-
+led_bright=1023
 
 # Local time doings
 def stringTime(thisTime):
@@ -230,6 +230,7 @@ async def display_solar_today(lcd):
 
 
 async def main():
+    global led_bright
     # define the display
     # WEMOS LOLIN32 ESP32 Lite pinout
     sdaPIN = Pin(23)
@@ -245,8 +246,12 @@ async def main():
     I2C_NUM_ROWS = 2
     I2C_NUM_COLS = 16
     lcd = I2cLcd(i2c, I2C_ADDR, I2C_NUM_ROWS, I2C_NUM_COLS)
-    btn = Pin(35, Pin.IN, Pin.PULL_UP)
-
+    led_out = PWM(Pin(5), freq=500, duty=600)
+    # Usage: led_out.init(freq=500, duty=led_bright)
+    led_btn = Pin(34, Pin.IN, Pin.PULL_UP)
+    day_btn = Pin(35, Pin.IN, Pin.PULL_UP)
+    reset_btn = Pin(36, Pin.IN, Pin.PULL_UP)
+    
     # Custom character bits
     solar_icon = bytearray([0x00, 0x15, 0x0E, 0x1F, 0x1F, 0x0E, 0x15, 0x00])
     lcd.custom_char(0, solar_icon)
@@ -329,7 +334,7 @@ async def main():
     uasyncio.create_task(timer_solis_data(solisInfo, lcd))
 
     while True:
-        await wait_button(btn)
+        await wait_button(day_btn)
         await display_solar_today(lcd)
 
 
