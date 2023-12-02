@@ -28,7 +28,7 @@ The LOLIN32 LITE has a handy battery input that goes into a voltage regulator ra
 
 The LCD display I'm using is a 1602 one based on the HD44780 controller, and an PCF8574 I2C interface.
 
-I'm using a PWM-capable output pin to drive the backlight LED, so I desoldered the on-board resistor and connected a 100Ω one to the output of a level converter (since it needs 5V and the PWM output pin is only 3v)
+I'm using a PWM-capable output pin to drive the backlight LED, so I desoldered the on-board resistor and connected a 100Ω one to the output of a logic level converter (since it needs 5V and the PWM output pin is only 3.3v)
 
 ![resistor position](docs/1602-resistor.png)
 
