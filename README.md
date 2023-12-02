@@ -1,13 +1,15 @@
-# solar-display-micropython
-A version of the solar display using MicroPython
+# Solis Cloud API display for ESP32
 
-It uses the [Solis API](https://solis-service.solisinverters.com/en/support/solutions/articles/44002212561-api-access-soliscloud) which allows users of Solis inverters to collect current and historical data
+A version of a Solis Cloud API solar display using MicroPython and a 1602 LCD screen, for the ESP32 board.
 
-## Note: ESP32 only
+It uses the [Solis API](https://solis-service.solisinverters.com/en/support/solutions/articles/44002212561-api-access-soliscloud) which allows users of Solis inverters to collect current and historical data, and displays it on a handy little screen.
+
+### Note: ESP32 only
 This currently doesn't work on a WeMos D1mini (and maybe other ESP8266 devices) because of this:
 [github.com/micropython/micropython-lib/issues/400](https://github.com/micropython/micropython-lib/issues/400) 
 
 ## Hardware
+Here's what I used to make my version:
 - Wemos LOLIN32 LITE (or off-brand equivalent ESP32)
 - HD44780 based 1602 LCD screen
 - PCF8574 based I2C interface
@@ -15,6 +17,8 @@ This currently doesn't work on a WeMos D1mini (and maybe other ESP8266 devices) 
 - 4 channel logic level shifter
 - 5x 2kΩ resistor pull-ups
 - a 5V power supply
+
+These are all (currently) available for a total of less than £10 from your favourite online electronics retailer.
 
 I'm using a WEMOS LOLIN32 LITE which has just about enough memory to do the job. 
 
