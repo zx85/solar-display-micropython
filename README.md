@@ -16,11 +16,13 @@ Here's what I used to make my version:
 - 100Ω resistor
 - 4 channel logic level shifter
 - 5x 2kΩ resistor pull-ups
+- a mini USB charging board (to get 5V from a micro USB connector)
 - a 5V power supply
+- a collection of miscellaneous push buttons
 
 These are all (currently) available for a total of less than £10 from your favourite online electronics retailer.
 
-I'm using a WEMOS LOLIN32 LITE which has just about enough memory to do the job. 
+I'm using a WEMOS LOLIN32 LITE which has just about enough memory and processing power to do the job. 
 
 There's no reason why it can't work with another ESP32 device - a WEMOS S2MINI is smaller, for example. You'd need to adjust the pins to suit, obviously.
 
@@ -94,3 +96,8 @@ The button on Pin 34 increases the brightness of the LED until it gets to maxium
 The button on Pin 36 is the hard reset button - hold it for 3 seconds and it clears the credentials and restarts at the captive portal.
 
 Finally, the reset button does a normal reset on the ESP32, in case it's got stuck or something.
+
+
+## 3D printed case
+
+In the docs/Case design folder you can find 3MF and STL files for the case design. The PCBs are intended to click into the rear section, and the display clicks into the front. 
